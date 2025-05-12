@@ -6,13 +6,68 @@ import sys
 import tarfile
 from io import BytesIO
 from threading import Thread
-from typing import Any, Union
+from typing import Any, Union, List
 from uuid import uuid4
+import abc
 
 import docker
 from docker.models.containers import Container
 from RestrictedPython import compile_restricted
 
+class InstallPolicy(abc.ABC):
+    """
+    An abstract base class for specifying Python package installation commands.
+    At this time, this assumes that the command outputs are compatible with
+    pip.
+    """
+
+    def init_cmds(self) -> List[str]:
+        """ 
+        [Optional] Specify a list of commands to run during initialization 
+
+        For example, if you are using UV, you might want to run "pip install uv".
+        """
+        return []
+
+    @abc.abstractmethod
+    def install_cmd(self, package:str) -> str:
+        """ Installs the specified Package """
+
+    @abc.abstractmethod
+    def uninstall_cmd(self, package:str) -> str:
+        """ Uninstalls the specified Package """
+
+    @abc.abstractmethod
+    def list_cmd(self) -> str:
+        """ Lists all available packages """
+
+class UVInstallPolicy(InstallPolicy):
+
+    def init(self):
+        """
+        Installs uv on initialization.
+        """
+        return [ "pip install uv" ]
+
+    def install_cmd(self, package:str):
+        return f"uv pip install {package} --system"
+
+    def uninstall_cmd(self, package:str):
+        return f"uv pip uninstall -y {package}"
+
+    def list_cmd(self):
+        return "uv pip list"
+
+class PIPInstallPolicy(InstallPolicy):
+    
+    def install_cmd(self, package:str):
+        return f"pip install {package}"
+
+    def uninstall_cmd(self, package: str):
+        return f"pip uninstall -y {package}"
+
+    def list_cmd(self):
+        return f"pip list"
 
 class AgentRun:
     """Class to execute Python code in an isolated Docker container.
@@ -44,6 +99,7 @@ class AgentRun:
         memory_limit="100m",
         memswap_limit="512m",
         client=None,
+        install_policy=UVInstallPolicy()
     ) -> None:
 
         self.cpu_quota = cpu_quota
@@ -55,6 +111,7 @@ class AgentRun:
         # this is to allow a mock client to be passed in for testing if docker is not available (not implemented yet)
         self.client = client or docker.from_env()
         self.cached_dependencies = cached_dependencies
+        self.install_policy = install_policy
 
         try:
             self.client = client or docker.from_env()
@@ -76,13 +133,14 @@ class AgentRun:
             and not self.validate_cached_dependencies()
         ):
             raise ValueError("Some cached dependencies are not in the whitelist.")
-        container = self.client.containers.get(self.container_name)
-        command = f"pip install uv"
-        exit_code, output = self.execute_command_in_container(
-            container, command, timeout=120
-        )
-        if exit_code != 0:
-            raise ValueError("Failed to install uv.")
+        # run any initialization commands specified.
+        for command in self.install_policy.init_cmds():
+            container = self.client.containers.get(self.container_name)
+            exit_code, _ = self.execute_command_in_container(
+                container, command, timeout=120
+            )
+            if exit_code != 0:
+                raise ValueError(f"Failed to run: {command}.")
 
         if self.cached_dependencies:
             self.install_cached_dependencies()
@@ -300,7 +358,7 @@ class AgentRun:
                     return f"Dependency: {dep} is not in the whitelist."
         # if we are doing caching, we need to check if the dependencies are already installed
         if self.cached_dependencies:
-            exec_log = container.exec_run(cmd="uv pip list", workdir="/code")
+            exec_log = container.exec_run(cmd=self.install_policy.list_cmd(), workdir="/code")
             exit_code, output = exec_log.exit_code, exec_log.output.decode("utf-8")
             installed_packages = output.splitlines()
             installed_packages = [
@@ -312,7 +370,7 @@ class AgentRun:
         for dep in dependencies:
             if dep.lower() in installed_packages:
                 continue
-            command = f"uv pip install {dep} --system"
+            command = self.install_policy.install_cmd(dep)
             exit_code, output = self.execute_command_in_container(
                 container, command, timeout=120
             )
@@ -333,7 +391,7 @@ class AgentRun:
             # do not uninstall dependencies that are cached_dependencies
             if dep in self.cached_dependencies:
                 continue
-            command = f"uv pip uninstall -y {dep}"
+            command = self.install_policy.uninstall_cmd(dep)
             exit_code, output = self.execute_command_in_container(
                 container, command, timeout=120
             )
