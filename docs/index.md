@@ -297,7 +297,7 @@ AgentRun has sane defaults, but totally customizable. You can change:
 > Using swap allows the system to handle more memory allocation than the physical memory available, but accessing swap is significantly slower than accessing RAM.
 
 
-You can change any of the defauts when you initalize AgentRun as below. 
+You can change any of the defaults when you initialize AgentRun as below.
 
 ```Python
 from agentrun import AgentRun
