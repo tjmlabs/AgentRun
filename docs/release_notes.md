@@ -16,5 +16,5 @@
 ## v0.1.1 (04-10-2024)
 -  More documentation and examples
 -  agentrun-api and agentrun combined Repo 
--  Cleaning up is now on a seperate thread. Performance improvement.
+-  Cleaning up is now on a separate thread. Performance improvement.
 -  Benchmarks tests 

@@ -445,7 +445,7 @@ class AgentRun:
 
         finally:
             if container:
-                # run clean up in a seperate thread to avoid blocking the main thread
+                # run clean up in a separate thread to avoid blocking the main thread
                 thread = Thread(
                     target=self.clean_up, args=(container, script_name, dependencies)
                 )
