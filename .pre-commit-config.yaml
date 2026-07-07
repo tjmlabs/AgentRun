@@ -1,0 +1,21 @@
+# tjmlabs shared pre-commit config. Ship this into each bot repo (and the
+# templates, so new bots inherit it). Catches secrets at the keyboard, before
+# they ever reach GitHub. Local hooks are skippable with --no-verify, which is
+# why CI (secret-scan.yml) re-runs the same gitleaks as a non-skippable gate.
+#
+# One-time per machine:  uv tool install pre-commit  (or: pipx install pre-commit)
+# Then in the repo:      pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        args: ["--config", ".gitleaks.toml"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key       # SSH/PEM private keys
+      - id: check-added-large-files  # blocks accidental big blobs
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
