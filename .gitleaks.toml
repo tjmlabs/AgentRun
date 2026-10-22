@@ -1,26 +1,39 @@
 # tjmlabs shared gitleaks config.
 # Extends the built-in ruleset (100+ detectors) and adds an allowlist so the
-# legitimate example/fixture env files in our templates don't trip the gate.
+# test fixture env files don't trip the gate.
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "tjmlabs allowlisted example/fixture files and paths"
+description = "tjmlabs allowlisted fixture files and paths"
 # NOTE: docs/ and README are deliberately NOT allowlisted. A real key pasted into
 # a readme is a common leak path, so we keep scanning them and rely on the
 # placeholder regex below to suppress obvious examples. If a legit example still
 # trips the gate, add a '# gitleaks:allow' comment on that line.
+# .env.example and .env.sample are NOT allowlisted either: they are the one env
+# filename the org push rule lets through, so a real .env saved under that name
+# has to be caught here.
 paths = [
-  '''(^|/)\.env\.example$''',
   '''(^|/)\.env\.test$''',
-  '''(^|/)\.env\.sample$''',
   '''(^|/)tests?/test\.env$''',
   '''(^|/)tests?/fixtures/''',
 ]
 
 # Ignore obvious placeholder values so example files with dummy keys stay quiet.
-regexTarget = "match"
+# Checked against the value only: a key named EXAMPLE_TOKEN must not excuse a
+# real value.
 regexes = [
-  '''(?i)(your[-_]?api[-_]?key|changeme|placeholder|xxxx+|example|dummy|<[^>]+>)''',
+  '''(?i)(your[-_]?api[-_]?key|your[-_]\w+|changeme|placeholder|xxxx+|example|dummy|<[^>]+>)''',
 ]
+
+# A login password or PIN has no token shape, so no built-in detector sees it.
+# In an env file, any PASSWORD/PIN key with a value is a finding; blank stays
+# quiet.
+[[rules]]
+id = "env-password-or-pin"
+description = "Password or PIN assigned in an env file"
+path = '''(^|/)[^/]*\.env[^/]*$'''
+regex = '''(?m)^[ \t]*(?:export[ \t]+)?[A-Z0-9_]*(?:PASSWORD|PIN)[ \t]*=[ \t]*("[^"\r\n]+"|'[^'\r\n]+'|[^\s#"'][^#\r\n]*)'''
+secretGroup = 1
+keywords = ["password", "pin"]
